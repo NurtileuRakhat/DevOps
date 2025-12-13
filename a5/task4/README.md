@@ -1,0 +1,1 @@
+https://gitlab.com/NurtileuRakhat/gitlab-ci-autoscaler-demo

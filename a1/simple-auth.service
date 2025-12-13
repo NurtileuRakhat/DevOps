@@ -1,0 +1,11 @@
+[Unit]
+Description=SimpleAuth OAuth2 Service
+After=network.target
+[Service]
+Type=simple
+User=vagrant
+EnvironmentFile=/etc/simple-auth.env
+ExecStart=/usr/local/bin/simple-auth
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target

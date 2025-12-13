@@ -1,0 +1,1 @@
+https://gitlab.com/NurtileuRakhat/docker-ci-runner-demo

@@ -1,0 +1,195 @@
+Vagrant.configure("2") do |config|
+    config.vm.box = "ubuntu/jammy64"
+    config.vm.hostname = "postgres-multi-db"
+    config.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048"
+      vb.cpus = 2
+    end
+  
+    config.vm.network "private_network", ip: "10.42.1.10", virtualbox__intnet: "db1"
+    config.vm.network "private_network", ip: "10.42.1.20", virtualbox__intnet: "db2" 
+    config.vm.network "private_network", ip: "10.42.1.30", virtualbox__intnet: "db3"
+  
+    config.vm.provision "shell", inline: <<-SHELL
+      apt-get update
+      apt-get upgrade -y
+  
+      apt-get install -y python3 python3-pip python3-venv
+  
+      apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+      echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      apt-get update
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  
+      systemctl start docker
+      systemctl enable docker
+  
+      usermod -aG docker vagrant
+  
+      mkdir -p /home/vagrant/databases
+  
+      cat > /home/vagrant/databases/docker-compose.yml << 'EOF'
+  version: '3.8'
+  
+  services:
+    postgres-db1:
+      image: postgres:15
+      container_name: postgres-db1
+      environment:
+        POSTGRES_DB: db1
+        POSTGRES_USER: ror
+        POSTGRES_PASSWORD: paror
+      ports:
+        - "5432:5432"
+      volumes:
+        - db1_data:/var/lib/postgresql/data
+        - ./init-db1.sql:/docker-entrypoint-initdb.d/init-db1.sql
+      restart: unless-stopped
+  
+    postgres-db2:
+      image: postgres:15
+      container_name: postgres-db2
+      environment:
+        POSTGRES_DB: db2
+        POSTGRES_USER: ror
+        POSTGRES_PASSWORD: paror
+      ports:
+        - "5433:5432"
+      volumes:
+        - db2_data:/var/lib/postgresql/data
+        - ./init-db2.sql:/docker-entrypoint-initdb.d/init-db2.sql
+      restart: unless-stopped
+  
+    postgres-db3:
+      image: postgres:15
+      container_name: postgres-db3
+      environment:
+        POSTGRES_DB: db3
+        POSTGRES_USER: ror
+        POSTGRES_PASSWORD: paror
+      ports:
+        - "5434:5432"
+      volumes:
+        - db3_data:/var/lib/postgresql/data
+        - ./init-db3.sql:/docker-entrypoint-initdb.d/init-db3.sql
+      restart: unless-stopped
+  
+  volumes:
+    db1_data:
+    db2_data:
+    db3_data:
+  EOF
+  
+      cat > /home/vagrant/databases/init-db1.sql << 'EOF'
+  -- Database 1 initialization
+  CREATE TABLE IF NOT EXISTS public.student_subject (
+      id SERIAL PRIMARY KEY,
+      subject_name VARCHAR(100) NOT NULL,
+      subject_code VARCHAR(20) NOT NULL,
+      credits INTEGER NOT NULL,
+      description TEXT,
+      semester VARCHAR(20),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  
+  -- Insert sample data for Database 1
+  INSERT INTO public.student_subject (subject_name, subject_code, credits, description, semester) VALUES
+  ('Database Systems', 'CS301', 3, 'Introduction to database design and SQL', 'Fall 2024'),
+  ('Operating Systems', 'CS302', 4, 'System programming and OS concepts', 'Fall 2024'),
+  ('Computer Networks', 'CS303', 3, 'Network protocols and architecture', 'Spring 2024');
+  EOF
+  
+      cat > /home/vagrant/databases/init-db2.sql << 'EOF'
+  -- Database 2 initialization
+  CREATE TABLE IF NOT EXISTS public.student_subject (
+      id SERIAL PRIMARY KEY,
+      subject_name VARCHAR(100) NOT NULL,
+      subject_code VARCHAR(20) NOT NULL,
+      credits INTEGER NOT NULL,
+      description TEXT,
+      semester VARCHAR(20),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  
+  -- Insert sample data for Database 2
+  INSERT INTO public.student_subject (subject_name, subject_code, credits, description, semester) VALUES
+  ('Machine Learning', 'CS401', 4, 'Introduction to ML algorithms and applications', 'Fall 2024'),
+  ('Software Engineering', 'CS402', 3, 'Software development methodologies', 'Fall 2024'),
+  ('Data Structures', 'CS403', 4, 'Advanced data structures and algorithms', 'Spring 2024');
+  EOF
+  
+      cat > /home/vagrant/databases/init-db3.sql << 'EOF'
+  -- Database 3 initialization
+  CREATE TABLE IF NOT EXISTS public.student_subject (
+      id SERIAL PRIMARY KEY,
+      subject_name VARCHAR(100) NOT NULL,
+      subject_code VARCHAR(20) NOT NULL,
+      credits INTEGER NOT NULL,
+      description TEXT,
+      semester VARCHAR(20),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  
+  -- Insert sample data for Database 3
+  INSERT INTO public.student_subject (subject_name, subject_code, credits, description, semester) VALUES
+  ('Web Development', 'CS501', 3, 'Full-stack web development', 'Fall 2024'),
+  ('Mobile Development', 'CS502', 3, 'iOS and Android app development', 'Fall 2024'),
+  ('Cloud Computing', 'CS503', 4, 'AWS, Azure, and cloud architectures', 'Spring 2024');
+  EOF
+  
+      cat > /home/vagrant/databases/start-databases.sh << 'EOF'
+  #!/bin/bash
+  echo "Starting PostgreSQL databases..."
+  cd /home/vagrant/databases
+  docker-compose up -d
+  
+  echo "Waiting for databases to initialize..."
+  sleep 30
+  
+  echo "Database status:"
+  docker-compose ps
+  
+  echo ""
+  echo "Database connection information:"
+  echo "Database 1: 10.42.1.10:5432 (db1) - User: ror, Password: paror"
+  echo "Database 2: 10.42.1.20:5433 (db2) - User: ror, Password: paror"  
+  echo "Database 3: 10.42.1.30:5434 (db3) - User: ror, Password: paror"
+  echo ""
+  echo "To connect to databases:"
+  echo "PGPASSWORD=paror psql -h 10.42.1.10 -p 5432 -U ror -d db1"
+  echo "PGPASSWORD=paror psql -h 10.42.1.20 -p 5433 -U ror -d db2"
+  echo "PGPASSWORD=paror psql -h 10.42.1.30 -p 5434 -U ror -d db3"
+  EOF
+  
+      cat > /home/vagrant/databases/test-connections.sh << 'EOF'
+  #!/bin/bash
+  echo "Testing database connections..."
+  
+  echo "Testing Database 1 (10.42.1.10:5432):"
+  docker exec postgres-db1 psql -U ror -d db1 -c "SELECT COUNT(*) as total_subjects FROM public.student_subject;"
+  
+  echo "Testing Database 2 (10.42.1.20:5433):"
+  docker exec postgres-db2 psql -U ror -d db2 -c "SELECT COUNT(*) as total_subjects FROM public.student_subject;"
+  
+  echo "Testing Database 3 (10.42.1.30:5434):"
+  docker exec postgres-db3 psql -U ror -d db3 -c "SELECT COUNT(*) as total_subjects FROM public.student_subject;"
+  
+  echo "All databases are running successfully!"
+  EOF
+  
+      chmod +x /home/vagrant/databases/start-databases.sh
+      chmod +x /home/vagrant/databases/test-connections.sh
+  
+      cd /home/vagrant/databases
+      ./start-databases.sh
+  
+      sleep 10
+  
+      ./test-connections.sh
+  
+      echo "Setup completed successfully!"
+      echo "VM is ready with three PostgreSQL databases."
+    SHELL
+  end
+  

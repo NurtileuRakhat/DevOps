@@ -1,0 +1,84 @@
+#!/bin/bash
+
+my_app=$1
+
+SERVICE_DIR="/etc/systemd/system"
+LOGROTATE_CONF="/tmp/logrotate.conf"
+
+sudo mkdir -p /home/logs
+sudo chmod 755 /home/logs
+sudo touch /home/logs/app.log
+sudo chmod 755 /home/logs/app.log
+
+create_logrotate_conf() {
+	echo "/home/logs/app.log {
+		size 10k
+		rotate 3
+		missingok
+		notifempty
+		create 0640 root root
+	}" | sudo tee $LOGROTATE_CONF > /dev/null
+}
+
+# Create generate-log.service
+generate_service() {
+cat <<EOF > $SERVICE_DIR/generate-log.service
+[Unit]
+Description=Generate logs for the Golang REST API
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/systemctl start monitoring.timer
+ExecStart=/usr/local/bin/$my_app
+StandardOutput=append:/home/logs/app.log
+StandardError=append:/home/logs/app.log
+Restart=on-failure
+ExecStopPost=/bin/systemctl stop monitoring.timer
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# Create monitoring.timer
+monitoring_service() {
+cat <<EOF > $SERVICE_DIR/monitoring.timer
+[Unit]
+Description=Timer to trigger log generation
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Unit=generate-logrotate.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+# Create generate-logrotate.service
+logrotate_service() {
+cat <<EOF > $SERVICE_DIR/generate-logrotate.service
+[Unit]
+Description=Run logrotate for service logs
+Wants=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate $LOGROTATE_CONF
+StandardOutput=append:/tmp/generate-logrotate.log
+StandardError=append:/tmp/generate-logrotate-error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+create_logrotate_conf
+logrotate_service
+monitoring_service
+generate_service
+
+sudo systemctl daemon-reload
+sudo systemctl restart generate-log.service
